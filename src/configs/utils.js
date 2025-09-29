@@ -1,3 +1,6 @@
+import { globalConfig, httpConfig } from "#common/init";
+import { settings } from '#common/handlers'
+
 export function isDomain(address) {
     if (!address) return false;
     const domainPattern = /^(?!-)(?:[A-Za-z0-9-]{1,63}.)+[A-Za-z]{2,}$/;
@@ -5,7 +8,7 @@ export function isDomain(address) {
 }
 
 export async function resolveDNS(domain, onlyIPv4 = false) {
-    const dohBaseURL = `${globalThis.dohURL}?name=${encodeURIComponent(domain)}`;
+    const dohBaseURL = `${globalConfig.dohURL}?name=${encodeURIComponent(domain)}`;
     const dohURLs = {
         ipv4: `${dohBaseURL}&type=A`,
         ipv6: `${dohBaseURL}&type=AAAA`,
@@ -26,6 +29,7 @@ async function fetchDNSRecords(url, recordType) {
         const data = await response.json();
 
         if (!data.Answer) return [];
+
         return data.Answer
             .filter(record => record.type === recordType)
             .map(record => record.data);
@@ -35,10 +39,9 @@ async function fetchDNSRecords(url, recordType) {
 }
 
 export async function getConfigAddresses(isFragment) {
-    const { settings, hostName } = globalThis;
-    const resolved = await resolveDNS(hostName, !settings.VLTRenableIPv6);
+    const resolved = await resolveDNS(httpConfig.hostName, !settings.VLTRenableIPv6);
     const addrs = [
-        hostName,
+        httpConfig.hostName,
         'www.speedtest.net',
         ...resolved.ipv4,
         ...resolved.ipv6.map((ip) => `[${ip}]`),
@@ -51,6 +54,7 @@ export async function getConfigAddresses(isFragment) {
 export function extractWireguardParams(warpConfigs, isWoW) {
     const index = isWoW ? 1 : 0;
     const warpConfig = warpConfigs[index].account.config;
+
     return {
         warpIPv6: `${warpConfig.interface.addresses.v6}/128`,
         reserved: warpConfig.client_id,
@@ -72,9 +76,11 @@ export function generateRemark(index, port, address, cleanIPs, protocol, configT
 
 export function randomUpperCase(str) {
     let result = '';
+
     for (let i = 0; i < str.length; i++) {
         result += Math.random() < 0.5 ? str[i].toUpperCase() : str[i];
     }
+
     return result;
 }
 
@@ -83,14 +89,15 @@ export function getRandomString(lengthMin, lengthMax) {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     const charactersLength = characters.length;
     const length = Math.floor(Math.random() * (lengthMax - lengthMin + 1)) + lengthMin;
+
     for (let i = 0; i < length; i++) {
         result += characters.charAt(Math.floor(Math.random() * charactersLength));
     }
+
     return result;
 }
 
 export function generateWsPath(protocol) {
-    const settings = globalThis.settings;
     const config = {
         junk: getRandomString(8, 16),
         protocol: protocol,
@@ -98,14 +105,14 @@ export function generateWsPath(protocol) {
         panelIPs: settings.proxyIPMode === 'proxyip' ? settings.proxyIPs : settings.prefixes
     };
 
-    const encodedConfig = btoa(JSON.stringify(config));
-    return `/${encodedConfig}`;
+    return `/${btoa(JSON.stringify(config))}`;
 }
 
 export function base64ToDecimal(base64) {
     const binaryString = atob(base64);
     const hexString = Array.from(binaryString).map(char => char.charCodeAt(0).toString(16).padStart(2, '0')).join('');
     const decimalArray = hexString.match(/.{2}/g).map(hex => parseInt(hex, 16));
+
     return decimalArray;
 }
 
@@ -124,9 +131,16 @@ export function getDomain(url) {
         const newUrl = new URL(url);
         const host = newUrl.hostname;
         const isHostDomain = isDomain(host);
-        return { host, isHostDomain };
+
+        return {
+            host,
+            isHostDomain
+        };
     } catch {
-        return { host: null, isHostDomain: false };
+        return {
+            host: null,
+            isHostDomain: false
+        };
     }
 }
 
@@ -134,13 +148,19 @@ export function base64EncodeUnicode(str) {
     return btoa(String.fromCharCode(...new TextEncoder().encode(str)));
 }
 
-export function parseHostPort(input) {
+export function parseHostPort(input, brackets) {
     const regex = /^(?:\[(?<ipv6>.+?)\]|(?<host>[^:]+))(:(?<port>\d+))?$/;
     const match = input.match(regex);
 
     if (!match) return null;
 
-    const host = match.groups.ipv6 || match.groups.host;
+    let ipv6 = match.groups.ipv6;
+
+    if (brackets && ipv6) {
+        ipv6 = `[${ipv6}]`;
+    }
+
+    const host = ipv6 || match.groups.host;
     const port = match.groups.port ? parseInt(match.groups.port, 10) : null;
 
     return { host, port };

@@ -1,31 +1,36 @@
-import { getDomain, resolveDNS } from '../cores-configs/helpers';
-import { fetchWarpConfigs } from '../protocols/warp';
+import { getDomain, resolveDNS } from '#configs/utils';
+import { httpConfig } from '#common/init';
+import { fetchWarpConfigs } from '#protocols/warp';
 
 export async function getDataset(request, env) {
-    let proxySettings, warpConfigs;
+    let settings, warpConfigs;
 
     try {
-        proxySettings = await env.kv.get("proxySettings", { type: 'json' });
+        settings = await env.kv.get("proxySettings", { type: 'json' });
         warpConfigs = await env.kv.get('warpConfigs', { type: 'json' });
+
+        if (!settings) {
+            settings = await updateDataset(request, env);
+            const configs = await fetchWarpConfigs(env);
+            warpConfigs = configs;
+        }
+
+        if (httpConfig.panelVersion !== settings.panelVersion) {
+            settings = await updateDataset(request, env);
+        }
+
+        return { settings, warpConfigs }
     } catch (error) {
         console.log(error);
-        throw new Error(`An error occurred while getting KV - ${error}`);
+        throw new Error(`An error occurred while getting KV - ${error.message}`);
     }
-
-    if (!proxySettings) {
-        proxySettings = await updateDataset(request, env);
-        const configs = await fetchWarpConfigs(env);
-        warpConfigs = configs;
-    }
-
-    if (globalThis.panelVersion !== proxySettings.panelVersion) proxySettings = await updateDataset(request, env);
-    return { proxySettings, warpConfigs }
 }
 
 export async function updateDataset(request, env) {
     let newSettings = request.method === 'POST' ? await request.json() : null;
     const isReset = newSettings?.resetSettings;
     let currentSettings;
+
     if (!isReset) {
         try {
             currentSettings = await env.kv.get("proxySettings", { type: 'json' });
@@ -34,11 +39,16 @@ export async function updateDataset(request, env) {
             throw new Error(`An error occurred while getting current KV settings - ${error}`);
         }
     }
-    
+
     const populateField = (field, defaultValue, callback) => {
         if (isReset) return defaultValue;
-        if (!newSettings) return currentSettings?.[field] ?? defaultValue;
+        
+        if (!newSettings) {
+            return currentSettings?.[field] ?? defaultValue;
+        }
+
         const value = newSettings[field];
+
         return typeof callback === 'function' ? callback(value) : value;
     }
 
@@ -61,7 +71,7 @@ export async function updateDataset(request, env) {
 
     const settings = {
         remoteDNS,
-        dohHost: await initDoh(), 
+        dohHost: await initDoh(),
         localDNS: populateField('localDNS', '8.8.8.8'),
         antiSanctionDNS: populateField('antiSanctionDNS', '78.157.42.100'),
         VLTRFakeDNS: populateField('VLTRFakeDNS', false),
@@ -119,7 +129,6 @@ export async function updateDataset(request, env) {
                 count: 5
             }
         ]),
-        hiddifyNoiseMode: populateField('hiddifyNoiseMode', 'm4'),
         knockerNoiseMode: populateField('knockerNoiseMode', 'quic'),
         noiseCountMin: populateField('noiseCountMin', 10),
         noiseCountMax: populateField('noiseCountMax', 15),
@@ -130,7 +139,7 @@ export async function updateDataset(request, env) {
         amneziaNoiseCount: populateField('amneziaNoiseCount', 5),
         amneziaNoiseSizeMin: populateField('amneziaNoiseSizeMin', 50),
         amneziaNoiseSizeMax: populateField('amneziaNoiseSizeMax', 100),
-        panelVersion: globalThis.panelVersion
+        panelVersion: httpConfig.panelVersion
     };
 
     try {
@@ -146,8 +155,10 @@ export async function updateDataset(request, env) {
 function extractChainProxyParams(chainProxy) {
     let configParams = {};
     if (!chainProxy) return {};
+
     const url = new URL(chainProxy);
     const protocol = url.protocol.slice(0, -1);
+
     if (protocol === atob('dmxlc3M=')) {
         const params = new URLSearchParams(url.search);
         configParams = {

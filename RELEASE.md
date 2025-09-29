@@ -1,4 +1,9 @@
 # ⚙️ Bug fixes and Improvements
 
-- Refactored
-- Try to fix 1101 #987
+- Added `happyEyeballs` to Xray (VLESS, Trojan and WorkerLess)
+- Fixed WorkerLess Stats not showing in v2rayNG
+- Revised Clash custom IP rules
+- Pruned some legacy clients from code
+- UI improvements
+- Refactored, code readability
+- Panel bug fixes

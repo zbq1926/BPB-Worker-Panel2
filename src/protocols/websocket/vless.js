@@ -1,7 +1,6 @@
-/* eslint-disable no-unused-vars */
-/* eslint-disable no-undef */
-import { isValidUUID } from '../helpers/helpers';
-import { handleTCPOutBound, makeReadableWebSocketStream, WS_READY_STATE_OPEN } from './common';
+import { isValidUUID } from '#common/handlers';
+import { globalConfig } from '#common/init';
+import { handleTCPOutBound, makeReadableWebSocketStream, WS_READY_STATE_OPEN } from '#protocols/websocket/common';
 
 export async function VlOverWSHandler(request) {
     const webSocketPair = new WebSocketPair();
@@ -15,9 +14,7 @@ export async function VlOverWSHandler(request) {
         console.log(`[${address}:${portWithRandomLog}] ${info}`, event || "");
     };
     const earlyDataHeader = request.headers.get("sec-websocket-protocol") || "";
-
     const readableWebSocketStream = makeReadableWebSocketStream(webSocket, earlyDataHeader, log);
-
     let remoteSocketWapper = {
         value: null,
     };
@@ -46,22 +43,22 @@ export async function VlOverWSHandler(request) {
                 rawDataIndex,
                 VLVersion = new Uint8Array([0, 0]),
                 isUDP,
-            } = processVLHeader(chunk, globalThis.userID);
-            
+            } = processVLHeader(chunk, globalConfig.userID);
+
             address = addressRemote;
             portWithRandomLog = `${portRemote}--${Math.random()} ${isUDP ? "udp " : "tcp "} `;
-            
+
             if (hasError) {
                 // controller.error(message);
                 throw new Error(message); // cf seems has bug, controller.error will not end stream
                 // webSocket.close(1000, message);
                 // return;
             }
-            
+
             // ["version", "附加信息长度 N"]
             const VLResponseHeader = new Uint8Array([VLVersion[0], 0]);
             const rawClientData = chunk.slice(rawDataIndex);
-            
+
             // if UDP but port not DNS port, close it
             if (isUDP) {
                 if (portRemote === 53) {
@@ -93,8 +90,7 @@ export async function VlOverWSHandler(request) {
         abort(reason) {
             log(`readableWebSocketStream is abort`, JSON.stringify(reason));
         },
-    })
-    )
+    }))
         .catch((err) => {
             log("readableWebSocketStream pipeTo error", err);
         });
@@ -112,6 +108,7 @@ function processVLHeader(VLBuffer, userID) {
             message: "invalid data",
         };
     }
+
     const version = new Uint8Array(VLBuffer.slice(0, 1));
     let isValidUser = false;
     let isUDP = false;
@@ -128,7 +125,6 @@ function processVLHeader(VLBuffer, userID) {
 
     const optLength = new Uint8Array(VLBuffer.slice(17, 18))[0];
     //skip opt for now
-
     const command = new Uint8Array(VLBuffer.slice(18 + optLength, 18 + optLength + 1))[0];
 
     // 0x01 TCP
@@ -142,6 +138,7 @@ function processVLHeader(VLBuffer, userID) {
             message: `command ${command} is not support, command 01-tcp,02-udp,03-mux`,
         };
     }
+
     const portIndex = 18 + optLength + 1;
     const portBuffer = VLBuffer.slice(portIndex, portIndex + 2);
     // port is big-Endian in raw data etc 80 == 0x005d
@@ -157,6 +154,7 @@ function processVLHeader(VLBuffer, userID) {
     let addressLength = 0;
     let addressValueIndex = addressIndex + 1;
     let addressValue = "";
+
     switch (addressType) {
         case 1:
             addressLength = 4;
@@ -185,6 +183,7 @@ function processVLHeader(VLBuffer, userID) {
                 message: `invild  addressType is ${addressType}`,
             };
     }
+
     if (!addressValue) {
         return {
             hasError: true,
@@ -236,14 +235,17 @@ function unsafeStringify(arr, offset = 0) {
 
 function stringify(arr, offset = 0) {
     const uuid = unsafeStringify(arr, offset);
+
     if (!isValidUUID(uuid)) {
         throw TypeError("Stringified UUID is invalid");
     }
+
     return uuid;
 }
 
 async function handleUDPOutBound(webSocket, VLResponseHeader, log) {
     let isVLHeaderSent = false;
+
     const transformStream = new TransformStream({
         start(controller) { },
         transform(chunk, controller) {
@@ -266,7 +268,7 @@ async function handleUDPOutBound(webSocket, VLResponseHeader, log) {
             new WritableStream({
                 async write(chunk) {
                     const resp = await fetch(
-                        dohURL, // dns server url
+                        globalConfig.dohURL, // dns server url
                         {
                             method: "POST",
                             headers: {
@@ -275,12 +277,15 @@ async function handleUDPOutBound(webSocket, VLResponseHeader, log) {
                             body: chunk,
                         }
                     );
+
                     const dnsQueryResult = await resp.arrayBuffer();
                     const udpSize = dnsQueryResult.byteLength;
                     // console.log([...new Uint8Array(dnsQueryResult)].map((x) => x.toString(16)));
                     const udpSizeBuffer = new Uint8Array([(udpSize >> 8) & 0xff, udpSize & 0xff]);
+
                     if (webSocket.readyState === WS_READY_STATE_OPEN) {
                         log(`doh success and dns message length is ${udpSize}`);
+
                         if (isVLHeaderSent) {
                             webSocket.send(await new Blob([udpSizeBuffer, dnsQueryResult]).arrayBuffer());
                         } else {
