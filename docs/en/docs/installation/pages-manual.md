@@ -1,10 +1,12 @@
-# :material-new-box:{ .md .middle } Pages Setup - Direct Upload Method
+# :material-new-box:{ .md .middle } Pages manual installation (Direct Upload)
+
+It is highly recommended to use [Wizard installation](./wizard.md) to avoid Cloudflare 1101 error, user errors and also save time to setup panel.
 
 ## Steps
 
 ### 1. Create Cloudflare Account
 
-If you don’t have a Cloudflare account, create one [here](https://dash.cloudflare.com/sign-up). You only need an email for registration. Due to Cloudflare’s restrictions, use a reputable email provider like Gmail.
+If you don’t have a Cloudflare account, create one [from here](https://dash.cloudflare.com/sign-up). You only need an email for registration. Due to Cloudflare’s restrictions, use a reputable email provider like Gmail.
 
 ### 2. Create Pages Project
 
